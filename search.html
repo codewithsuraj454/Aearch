@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MiniSearch</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;font-family:Poppins}
+body{margin:0;background:#f8fafc;color:#0f172a}
+header{padding:30px;text-align:center}
+.logo{font-size:36px;font-weight:700;color:#2563eb}
+.search-box{margin-top:20px;display:flex;justify-content:center}
+.search-box input{width:60%;max-width:700px;padding:16px 22px;border-radius:999px;border:1px solid #cbd5f5;font-size:18px}
+.tabs{text-align:center;margin-top:15px}
+.tabs button{background:#e2e8f0;border:none;padding:8px 18px;border-radius:999px;margin:0 5px;cursor:pointer}
+.tabs button.active{background:#2563eb;color:white}
+.results{max-width:1100px;margin:30px auto;padding:0 20px}
+.result{background:white;border-radius:16px;padding:18px 22px;margin-bottom:16px;box-shadow:0 5px 20px rgba(0,0,0,.05)}
+.result-header{display:flex;align-items:center;gap:10px}
+.result-header img{width:20px;height:20px}
+.result a{font-size:18px;font-weight:600;color:#1d4ed8;text-decoration:none}
+.url{font-size:13px;color:#475569}
+.desc{margin-top:8px;color:#334155}
+.image-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.image-card{background:white;border-radius:12px;overflow:hidden;cursor:pointer;box-shadow:0 5px 20px rgba(0,0,0,.08)}
+.image-card img{width:100%;height:180px;object-fit:cover}
+.image-info{padding:10px}
+.site-row{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.site-row img{width:16px;height:16px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center}
+.modal-box{background:white;border-radius:16px;max-width:900px;width:90%;padding:20px}
+.modal-box img{max-width:100%;max-height:60vh;display:block;margin:auto}
+.close{float:right;cursor:pointer}
+.video-card{display:flex;gap:16px;background:white;border-radius:16px;padding:16px;margin-bottom:16px;box-shadow:0 5px 20px rgba(0,0,0,.05)}
+.video-card img.thumb{width:200px;height:120px;object-fit:cover;border-radius:8px}
+button.download-btn{padding:6px 12px;border:none;border-radius:6px;background:#2563eb;color:white;cursor:pointer;margin-top:6px}
+</style>
+</head>
+<body>
+
+<header>
+<div class="logo">MiniSearch</div>
+<div class="search-box">
+<input id="q" placeholder="Search..." oninput="runSearch()">
+</div>
+<div class="tabs">
+<button id="tab-web" class="active" onclick="setMode('web')">All</button>
+<button id="tab-images" onclick="setMode('images')">Images</button>
+<button id="tab-videos" onclick="setMode('videos')">Videos</button>
+<button id="tab-files" onclick="setMode('files')">Files</button>
+</div>
+</header>
+
+<div id="results" class="results"></div>
+
+<!-- IMAGE MODAL -->
+<div id="modal" class="modal" onclick="closeModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <span class="close" onclick="closeModal()">✖</span>
+    <img id="modal-img">
+    <h3 id="modal-title"></h3>
+    <div id="modal-site"></div>
+    <p><a id="modal-link" target="_blank">Open source page</a></p>
+  </div>
+</div>
+
+<script>
+let MODE="web";
+let PAGES=[], IMAGES=[], VIDEOS=[], FILES=[];
+
+// Load JSON data
+async function loadData(){
+  PAGES = Object.values(await (await fetch("data.json")).json());
+  IMAGES = await (await fetch("images.json")).json();
+  VIDEOS = await (await fetch("videos.json")).json();
+  FILES = await (await fetch("files.json")).json();
+}
+
+// Tab switching
+function setMode(m){
+  MODE=m;
+  document.getElementById("tab-web").classList.toggle("active",m==="web");
+  document.getElementById("tab-images").classList.toggle("active",m==="images");
+  document.getElementById("tab-videos").classList.toggle("active",m==="videos");
+  document.getElementById("tab-files").classList.toggle("active",m==="files");
+  runSearch();
+}
+
+// Tokenization (allow 1-char)
+function tokens(s){
+  return s.toLowerCase().split(/\W+/).filter(x => x.length>0);
+}
+
+// Token match score
+function tokenMatchScore(text, queryTokens){
+  if(!text) return 0;
+  text = text.toLowerCase();
+  let score = 0;
+  for(const qt of queryTokens){
+    if(text.includes(qt)){
+      score += (qt.length<=2?5:10);
+    } else {
+      const words = text.split(/\W+/);
+      for(const w of words){
+        if(w.startsWith(qt) || qt.startsWith(w)){
+          score += (qt.length<=2?3:6);
+          break;
+        }
+      }
+    }
+  }
+  return score;
+}
+
+// truncate description
+function truncateWords(t,n){
+  let w=t.split(/\s+/);
+  if(w.length<=n) return t;
+  return w.slice(0,n).join(" ")+"...";
+}
+
+/* -------- WEB -------- */
+function scoreWeb(p,q){
+  const qt = tokens(q);
+  if(qt.length===0) return 0;
+  let score = 0;
+  for(const t of qt){
+    score += tokenMatchScore(p.title||"", [t])*10;
+    score += tokenMatchScore(p.description||"", [t])*2;
+    score += tokenMatchScore(p.url||"", [t])*6;
+  }
+  if(p.pagerank) score += p.pagerank*20;
+  const qstr = q.toLowerCase();
+  if((p.title||"").toLowerCase().includes(qstr)) score += 500;
+  if((p.url||"").toLowerCase().includes(qstr)) score += 300;
+  return score;
+}
+
+/* -------- IMAGES -------- */
+function scoreImage(i,q){
+  const qt = tokens(q);
+  let score=0;
+  for(const t of qt){
+    if(t.length<=2){
+      if((i.img_title||"").toLowerCase().includes(t)) score+=5;
+      if((i.page_title||"").toLowerCase().includes(t)) score+=3;
+    } else {
+      score += tokenMatchScore(i.img_title||"", [t])*10;
+      score += tokenMatchScore(i.page_title||"", [t])*4;
+      score += tokenMatchScore(i.page_url||"", [t])*2;
+    }
+  }
+  return score;
+}
+
+/* -------- VIDEOS -------- */
+function scoreVideo(v,q){
+  const qt = tokens(q);
+  let score=0;
+  for(const t of qt){
+    if(t.length<=2){
+      if((v.video_title||"").toLowerCase().includes(t)) score+=5;
+      if((v.page_title||"").toLowerCase().includes(t)) score+=3;
+    } else {
+      score += tokenMatchScore(v.video_title||"", [t])*10;
+      score += tokenMatchScore(v.page_title||"", [t])*4;
+    }
+  }
+  return score;
+}
+
+/* -------- FILES -------- */
+function scoreFile(f,q){
+  const qt = tokens(q);
+  let score = 0;
+  for(const t of qt){
+    if(t.length<=2){
+      if((f.file_title||"").toLowerCase().includes(t)) score += 5;
+      if((f.page_title||"").toLowerCase().includes(t)) score += 3;
+    } else {
+      score += tokenMatchScore(f.file_title||"", [t])*10;
+      score += tokenMatchScore(f.page_title||"", [t])*4;
+    }
+  }
+  return score;
+}
+
+/* -------- SEARCH -------- */
+function runSearch(){
+  const q=document.getElementById("q").value.trim();
+  const res=document.getElementById("results");
+  res.innerHTML="";
+  if(!q) return;
+  if(MODE==="web") searchWeb(q);
+  if(MODE==="images") searchImages(q);
+  if(MODE==="videos") searchVideos(q);
+  if(MODE==="files") searchFiles(q);
+}
+
+/* -------- WEB RESULTS -------- */
+function searchWeb(q){
+  let scored=[];
+  for(const p of PAGES){
+    const s = scoreWeb(p,q);
+    if(s>0) scored.push({p,s});
+  }
+  scored.sort((a,b)=>b.s-b.s);
+  const res=document.getElementById("results");
+  const seenDomains = new Set();
+  for(const r of scored){
+    const p=r.p;
+    const domain = new URL(p.url).hostname;
+    if(seenDomains.has(domain)) continue;
+    seenDomains.add(domain);
+    const d=document.createElement("div");
+    d.className="result";
+    d.innerHTML=`
+      <div class="result-header">
+        <img src="${p.favicon||''}">
+        <a href="${p.url}" target="_blank">${p.title||p.url}</a>
+      </div>
+      <div class="url">${p.url}</div>
+      <div class="desc">${truncateWords(p.description||'',14)}</div>
+    `;
+    res.appendChild(d);
+    if(seenDomains.size>=20) break;
+  }
+}
+
+/* -------- IMAGES -------- */
+function searchImages(q){
+  let scored=[];
+  for(const i of IMAGES){
+    const s = scoreImage(i,q);
+    if(s>0) scored.push({i,s});
+  }
+  scored.sort((a,b)=>b.s-b.s);
+  const grid=document.createElement("div");
+  grid.className="image-grid";
+  const seenDomains = new Set();
+  for(const r of scored){
+    const i=r.i;
+    const domain = new URL(i.page_url).hostname;
+    if(seenDomains.has(domain)) continue;
+    seenDomains.add(domain);
+    const c=document.createElement("div");
+    c.className="image-card";
+    c.innerHTML=`
+      <img src="${i.img_url}">
+      <div class="image-info">
+        <div><b>${i.img_title||i.page_title||''}</b></div>
+        <div class="site-row">
+          <img src="${i.page_favicon||''}">
+          <span>${i.page_url}</span>
+        </div>
+      </div>
+    `;
+    c.onclick=()=>openModal(i);
+    grid.appendChild(c);
+    if(seenDomains.size>=40) break;
+  }
+  document.getElementById("results").appendChild(grid);
+}
+
+/* -------- IMAGE MODAL -------- */
+function openModal(i){
+  document.getElementById("modal").style.display="flex";
+  document.getElementById("modal-img").src=i.img_url;
+  document.getElementById("modal-title").textContent=i.img_title||i.page_title||"";
+  document.getElementById("modal-site").innerHTML = `<img src="${i.page_favicon||''}" style="width:16px;height:16px"> ${i.page_url}`;
+  document.getElementById("modal-link").href=i.page_url;
+}
+function closeModal(){document.getElementById("modal").style.display="none";}
+
+/* -------- VIDEOS -------- */
+function searchVideos(q){
+  let scored=[];
+  for(const v of VIDEOS){
+    const s = scoreVideo(v,q);
+    if(s>0) scored.push({v,s});
+  }
+  scored.sort((a,b)=>b.s-b.s);
+  const res=document.getElementById("results");
+  const seenDomains = new Set();
+  for(const r of scored){
+    const v=r.v;
+    const domain = new URL(v.page_url).hostname;
+    if(seenDomains.has(domain)) continue;
+    seenDomains.add(domain);
+    const d=document.createElement("div");
+    d.className="video-card";
+    d.innerHTML=`
+      <img class="thumb" src="${v.thumbnail||''}">
+      <div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <img src="${v.page_favicon||''}" style="width:16px;height:16px">
+          <a href="${v.video_url}" target="_blank">${v.video_title||v.page_title}</a>
+        </div>
+        <div class="url">${v.page_url}</div>
+      </div>
+    `;
+    res.appendChild(d);
+    if(seenDomains.size>=20) break;
+  }
+}
+
+/* -------- FILES -------- */
+function searchFiles(q){
+  let scored=[];
+  for(const f of FILES){
+    const s = scoreFile(f,q);
+    if(s>0) scored.push({f,s});
+  }
+  scored.sort((a,b)=>b.s-b.s);
+  const res = document.getElementById("results");
+  const seenDomains = new Set();
+  for(const r of scored){
+    const f = r.f;
+    const domain = new URL(f.page_url).hostname;
+    if(seenDomains.has(domain)) continue;
+    seenDomains.add(domain);
+    const d = document.createElement("div");
+    d.className="result";
+    d.innerHTML=`
+      <div class="result-header">
+        <img src="${f.page_favicon||''}">
+        <a href="${f.file_url}" target="_blank">${f.file_title||f.file_url}</a>
+      </div>
+      <div class="url">${f.page_url}</div>
+      <div class="desc">
+        <button class="download-btn" onclick="window.open('${f.file_url}','_blank')">Download</button>
+      </div>
+    `;
+    res.appendChild(d);
+    if(seenDomains.size>=20) break;
+  }
+}
+
+/* -------- INIT -------- */
+loadData();
+</script>
+
+</body>
+</html>
