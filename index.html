@@ -746,34 +746,154 @@ header {
 </div>
 
 <script>
-let MODE = "all";
-let PAGES = [];
-let IMAGES = [];
-let VIDEOS = [];
-let FILES = [];
-let currentQuery = "";
-let currentImageData = null;
-
-// Load data
-async function loadData() {
-  try {
-    PAGES = Object.values(await (await fetch("data.json")).json());
-    IMAGES = await (await fetch("images.json")).json();
-    VIDEOS = await (await fetch("videos.json")).json();
-    FILES = await (await fetch("files.json")).json();
-  } catch (e) {
-    console.error("Error loading data:", e);
-  }
+// Polyfills for older browsers like BlackBerry Q10
+if (!Array.prototype.includes) {
+  Array.prototype.includes = function(searchElement) {
+    var O = Object(this);
+    var len = parseInt(O.length) || 0;
+    if (len === 0) return false;
+    var n = parseInt(arguments[1]) || 0;
+    var k = Math.max(n >= 0 ? n : len - Math.abs(n), 0);
+    while (k < len) {
+      if (O[k] === searchElement) return true;
+      k++;
+    }
+    return false;
+  };
 }
 
-// Initialize
-loadData();
+if (!String.prototype.includes) {
+  String.prototype.includes = function(search, start) {
+    if (typeof start !== 'number') start = 0;
+    if (start + search.length > this.length) return false;
+    return this.indexOf(search, start) !== -1;
+  };
+}
+
+if (!Array.prototype.filter) {
+  Array.prototype.filter = function(callback, thisArg) {
+    var arr = [];
+    for (var i = 0; i < this.length; i++) {
+      if (callback.call(thisArg, this[i], i, this)) {
+        arr.push(this[i]);
+      }
+    }
+    return arr;
+  };
+}
+
+if (!Array.prototype.map) {
+  Array.prototype.map = function(callback, thisArg) {
+    var arr = [];
+    for (var i = 0; i < this.length; i++) {
+      arr.push(callback.call(thisArg, this[i], i, this));
+    }
+    return arr;
+  };
+}
+
+if (!String.prototype.trim) {
+  String.prototype.trim = function() {
+    return this.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
+  };
+}
+
+if (!Array.prototype.forEach) {
+  Array.prototype.forEach = function(callback, thisArg) {
+    for (var i = 0; i < this.length; i++) {
+      callback.call(thisArg, this[i], i, this);
+    }
+  };
+}
+
+// Global variables
+var MODE = "all";
+var PAGES = [];
+var IMAGES = [];
+var VIDEOS = [];
+var FILES = [];
+var currentQuery = "";
+var currentImageData = null;
+
+// Load data with callback for older browsers
+function loadData() {
+  // Load PAGES
+  var xhr1 = new XMLHttpRequest();
+  xhr1.open('GET', 'data.json', true);
+  xhr1.onreadystatechange = function() {
+    if (xhr1.readyState === 4 && xhr1.status === 200) {
+      try {
+        var data = JSON.parse(xhr1.responseText);
+        PAGES = [];
+        for (var key in data) {
+          if (data.hasOwnProperty(key)) {
+            PAGES.push(data[key]);
+          }
+        }
+      } catch (e) {
+        console.log("Error loading pages:", e);
+      }
+    }
+  };
+  xhr1.send();
+
+  // Load IMAGES
+  var xhr2 = new XMLHttpRequest();
+  xhr2.open('GET', 'images.json', true);
+  xhr2.onreadystatechange = function() {
+    if (xhr2.readyState === 4 && xhr2.status === 200) {
+      try {
+        IMAGES = JSON.parse(xhr2.responseText);
+      } catch (e) {
+        console.log("Error loading images:", e);
+      }
+    }
+  };
+  xhr2.send();
+
+  // Load VIDEOS
+  var xhr3 = new XMLHttpRequest();
+  xhr3.open('GET', 'videos.json', true);
+  xhr3.onreadystatechange = function() {
+    if (xhr3.readyState === 4 && xhr3.status === 200) {
+      try {
+        VIDEOS = JSON.parse(xhr3.responseText);
+      } catch (e) {
+        console.log("Error loading videos:", e);
+      }
+    }
+  };
+  xhr3.send();
+
+  // Load FILES
+  var xhr4 = new XMLHttpRequest();
+  xhr4.open('GET', 'files.json', true);
+  xhr4.onreadystatechange = function() {
+    if (xhr4.readyState === 4 && xhr4.status === 200) {
+      try {
+        FILES = JSON.parse(xhr4.responseText);
+      } catch (e) {
+        console.log("Error loading files:", e);
+      }
+    }
+  };
+  xhr4.send();
+}
+
+// Initialize on page load
+if (window.addEventListener) {
+  window.addEventListener('load', loadData, false);
+} else if (window.attachEvent) {
+  window.attachEvent('onload', loadData);
+} else {
+  window.onload = loadData;
+}
 
 // Search handling
 function handleSearch() {
-  const input = document.getElementById("searchInput");
-  const clearBtn = document.getElementById("clearBtn");
-  currentQuery = input.value.trim();
+  var input = document.getElementById("searchInput");
+  var clearBtn = document.getElementById("clearBtn");
+  currentQuery = input.value.replace(/^\s+|\s+$/g, ''); // trim for old browsers
   
   clearBtn.style.display = currentQuery ? "flex" : "none";
   
@@ -786,7 +906,9 @@ function handleSearch() {
 }
 
 function handleKeyPress(e) {
-  if (e.key === "Enter") {
+  e = e || window.event;
+  var keyCode = e.keyCode || e.which;
+  if (keyCode === 13) { // Enter key
     performSearch();
   }
 }
@@ -807,9 +929,16 @@ function resetSearch() {
 // Tab switching
 function switchTab(mode) {
   MODE = mode;
-  document.querySelectorAll(".tab").forEach(tab => {
-    tab.classList.toggle("active", tab.dataset.mode === mode);
-  });
+  var tabs = document.querySelectorAll(".tab");
+  for (var i = 0; i < tabs.length; i++) {
+    var tab = tabs[i];
+    var tabMode = tab.getAttribute("data-mode");
+    if (tabMode === mode) {
+      tab.className = "tab active";
+    } else {
+      tab.className = "tab";
+    }
+  }
   
   if (currentQuery) {
     performSearch();
@@ -818,21 +947,31 @@ function switchTab(mode) {
 
 // Tokenization
 function tokens(s) {
-  return s.toLowerCase().split(/\W+/).filter(x => x.length > 0);
+  var lower = s.toLowerCase();
+  var split = lower.split(/\W+/);
+  var filtered = [];
+  for (var i = 0; i < split.length; i++) {
+    if (split[i].length > 0) {
+      filtered.push(split[i]);
+    }
+  }
+  return filtered;
 }
 
 // Scoring functions
 function tokenMatchScore(text, queryTokens) {
   if (!text) return 0;
   text = text.toLowerCase();
-  let score = 0;
-  for (const qt of queryTokens) {
-    if (text.includes(qt)) {
+  var score = 0;
+  for (var i = 0; i < queryTokens.length; i++) {
+    var qt = queryTokens[i];
+    if (text.indexOf(qt) !== -1) {
       score += (qt.length <= 2 ? 5 : 10);
     } else {
-      const words = text.split(/\W+/);
-      for (const w of words) {
-        if (w.startsWith(qt) || qt.startsWith(w)) {
+      var words = text.split(/\W+/);
+      for (var j = 0; j < words.length; j++) {
+        var w = words[j];
+        if (w.indexOf(qt) === 0 || qt.indexOf(w) === 0) {
           score += (qt.length <= 2 ? 3 : 6);
           break;
         }
@@ -843,28 +982,30 @@ function tokenMatchScore(text, queryTokens) {
 }
 
 function scoreWeb(p, q) {
-  const qt = tokens(q);
+  var qt = tokens(q);
   if (qt.length === 0) return 0;
-  let score = 0;
-  for (const t of qt) {
+  var score = 0;
+  for (var i = 0; i < qt.length; i++) {
+    var t = qt[i];
     score += tokenMatchScore(p.title || "", [t]) * 10;
     score += tokenMatchScore(p.description || "", [t]) * 2;
     score += tokenMatchScore(p.url || "", [t]) * 6;
   }
   if (p.pagerank) score += p.pagerank * 20;
-  const qstr = q.toLowerCase();
-  if ((p.title || "").toLowerCase().includes(qstr)) score += 500;
-  if ((p.url || "").toLowerCase().includes(qstr)) score += 300;
+  var qstr = q.toLowerCase();
+  if ((p.title || "").toLowerCase().indexOf(qstr) !== -1) score += 500;
+  if ((p.url || "").toLowerCase().indexOf(qstr) !== -1) score += 300;
   return score;
 }
 
 function scoreImage(i, q) {
-  const qt = tokens(q);
-  let score = 0;
-  for (const t of qt) {
+  var qt = tokens(q);
+  var score = 0;
+  for (var j = 0; j < qt.length; j++) {
+    var t = qt[j];
     if (t.length <= 2) {
-      if ((i.img_title || "").toLowerCase().includes(t)) score += 5;
-      if ((i.page_title || "").toLowerCase().includes(t)) score += 3;
+      if ((i.img_title || "").toLowerCase().indexOf(t) !== -1) score += 5;
+      if ((i.page_title || "").toLowerCase().indexOf(t) !== -1) score += 3;
     } else {
       score += tokenMatchScore(i.img_title || "", [t]) * 10;
       score += tokenMatchScore(i.page_title || "", [t]) * 4;
@@ -875,12 +1016,13 @@ function scoreImage(i, q) {
 }
 
 function scoreVideo(v, q) {
-  const qt = tokens(q);
-  let score = 0;
-  for (const t of qt) {
+  var qt = tokens(q);
+  var score = 0;
+  for (var j = 0; j < qt.length; j++) {
+    var t = qt[j];
     if (t.length <= 2) {
-      if ((v.video_title || "").toLowerCase().includes(t)) score += 5;
-      if ((v.page_title || "").toLowerCase().includes(t)) score += 3;
+      if ((v.video_title || "").toLowerCase().indexOf(t) !== -1) score += 5;
+      if ((v.page_title || "").toLowerCase().indexOf(t) !== -1) score += 3;
     } else {
       score += tokenMatchScore(v.video_title || "", [t]) * 10;
       score += tokenMatchScore(v.page_title || "", [t]) * 4;
@@ -890,12 +1032,13 @@ function scoreVideo(v, q) {
 }
 
 function scoreFile(f, q) {
-  const qt = tokens(q);
-  let score = 0;
-  for (const t of qt) {
+  var qt = tokens(q);
+  var score = 0;
+  for (var j = 0; j < qt.length; j++) {
+    var t = qt[j];
     if (t.length <= 2) {
-      if ((f.file_title || "").toLowerCase().includes(t)) score += 5;
-      if ((f.page_title || "").toLowerCase().includes(t)) score += 3;
+      if ((f.file_title || "").toLowerCase().indexOf(t) !== -1) score += 5;
+      if ((f.page_title || "").toLowerCase().indexOf(t) !== -1) score += 3;
     } else {
       score += tokenMatchScore(f.file_title || "", [t]) * 10;
       score += tokenMatchScore(f.page_title || "", [t]) * 4;
@@ -906,8 +1049,8 @@ function scoreFile(f, q) {
 
 // Perform search
 function performSearch() {
-  const results = document.getElementById("results");
-  const resultsInfo = document.getElementById("resultsInfo");
+  var results = document.getElementById("results");
+  var resultsInfo = document.getElementById("resultsInfo");
   
   if (!currentQuery) {
     results.innerHTML = "";
@@ -917,7 +1060,7 @@ function performSearch() {
   
   results.innerHTML = '<div class="loading">Searching...</div>';
   
-  setTimeout(() => {
+  setTimeout(function() {
     if (MODE === "all") {
       searchAll();
     } else if (MODE === "images") {
@@ -930,106 +1073,157 @@ function performSearch() {
   }, 100);
 }
 
+// Helper function for number formatting
+function formatNumber(num) {
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 // Search All
 function searchAll() {
-  const results = document.getElementById("results");
-  const resultsInfo = document.getElementById("resultsInfo");
+  var results = document.getElementById("results");
+  var resultsInfo = document.getElementById("resultsInfo");
   results.innerHTML = "";
   
-  let scored = [];
-  for (const p of PAGES) {
-    const s = scoreWeb(p, currentQuery);
-    if (s > 0) scored.push({ p, s });
+  var scored = [];
+  for (var i = 0; i < PAGES.length; i++) {
+    var p = PAGES[i];
+    var s = scoreWeb(p, currentQuery);
+    if (s > 0) scored.push({ p: p, s: s });
   }
-  scored.sort((a, b) => b.s - a.s);
+  
+  scored.sort(function(a, b) { return b.s - a.s; });
   
   if (scored.length === 0) {
     showNoResults();
     return;
   }
   
-  resultsInfo.textContent = `About ${scored.length.toLocaleString()} results`;
+  resultsInfo.textContent = "About " + formatNumber(scored.length) + " results";
   
-  const seenDomains = new Set();
-  for (const r of scored) {
-    const p = r.p;
-    const url = new URL(p.url);
-    const domain = url.hostname.replace('www.', '');
+  var seenDomains = {};
+  for (var i = 0; i < scored.length; i++) {
+    var r = scored[i];
+    var p = r.p;
     
-    if (seenDomains.has(domain)) continue;
-    seenDomains.add(domain);
+    // Simple URL parsing for older browsers
+    var parser = document.createElement('a');
+    parser.href = p.url;
+    var hostname = parser.hostname;
+    var domain = hostname.replace('www.', '');
     
-    const result = document.createElement("div");
+    if (seenDomains[domain]) continue;
+    seenDomains[domain] = true;
+    
+    var pathname = parser.pathname;
+    var pathParts = pathname.split('/');
+    var breadcrumbParts = [];
+    for (var j = 0; j < pathParts.length && j < 3; j++) {
+      if (pathParts[j]) breadcrumbParts.push(pathParts[j]);
+    }
+    var breadcrumb = breadcrumbParts.join(' › ');
+    
+    var result = document.createElement("div");
     result.className = "result";
     
-    const breadcrumb = url.pathname.split('/').filter(x => x).slice(0, 2).join(' › ');
+    var favicon = p.favicon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>';
     
-    result.innerHTML = `
-      <div class="result-url-container">
-        <img class="result-favicon" src="${p.favicon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>'}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>'">
-        <span class="result-url">${domain}</span>
-        ${breadcrumb ? `<span class="result-breadcrumb">› ${breadcrumb}</span>` : ''}
-      </div>
-      <a href="${p.url}" target="_blank" class="result-title">${p.title || p.url}</a>
-      <div class="result-desc">${p.description || ''}</div>
-    `;
+    result.innerHTML = 
+      '<div class="result-url-container">' +
+        '<img class="result-favicon" src="' + favicon + '" onerror="this.src=\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>\'">' +
+        '<span class="result-url">' + domain + '</span>' +
+        (breadcrumb ? '<span class="result-breadcrumb">› ' + breadcrumb + '</span>' : '') +
+      '</div>' +
+      '<a href="' + p.url + '" target="_blank" class="result-title">' + (p.title || p.url) + '</a>' +
+      '<div class="result-desc">' + (p.description || '') + '</div>';
     
     results.appendChild(result);
     
-    if (seenDomains.size >= 20) break;
+    var domainCount = 0;
+    for (var key in seenDomains) {
+      if (seenDomains.hasOwnProperty(key)) domainCount++;
+    }
+    if (domainCount >= 20) break;
   }
 }
 
 // Search Images
 function searchImages() {
-  const results = document.getElementById("results");
-  const resultsInfo = document.getElementById("resultsInfo");
+  var results = document.getElementById("results");
+  var resultsInfo = document.getElementById("resultsInfo");
   results.innerHTML = "";
   
-  let scored = [];
-  for (const i of IMAGES) {
-    const s = scoreImage(i, currentQuery);
-    if (s > 0) scored.push({ i, s });
+  var scored = [];
+  for (var i = 0; i < IMAGES.length; i++) {
+    var img = IMAGES[i];
+    var s = scoreImage(img, currentQuery);
+    if (s > 0) scored.push({ i: img, s: s });
   }
-  scored.sort((a, b) => b.s - a.s);
+  
+  scored.sort(function(a, b) { return b.s - a.s; });
   
   if (scored.length === 0) {
     showNoResults();
     return;
   }
   
-  resultsInfo.textContent = `About ${scored.length.toLocaleString()} image results`;
+  resultsInfo.textContent = "About " + formatNumber(scored.length) + " image results";
   
-  const grid = document.createElement("div");
+  var grid = document.createElement("div");
   grid.className = "image-grid";
   
-  const seenDomains = new Set();
-  for (const r of scored) {
-    const i = r.i;
-    const domain = new URL(i.page_url).hostname.replace('www.', '');
+  var seenDomains = {};
+  for (var j = 0; j < scored.length; j++) {
+    var r = scored[j];
+    var img = r.i;
     
-    if (seenDomains.has(domain)) continue;
-    seenDomains.add(domain);
+    var parser = document.createElement('a');
+    parser.href = img.page_url;
+    var domain = parser.hostname.replace('www.', '');
     
-    const card = document.createElement("div");
+    if (seenDomains[domain]) continue;
+    seenDomains[domain] = true;
+    
+    var card = document.createElement("div");
     card.className = "image-card";
-    card.innerHTML = `
-      <div class="image-wrapper">
-        <img src="${i.img_url}" alt="${i.img_title || ''}" loading="lazy">
-      </div>
-      <div class="image-info">
-        <div class="image-title">${i.img_title || i.page_title || 'Untitled'}</div>
-        <div class="image-source">
-          <img src="${i.page_favicon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>'}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>'">
-          <span>${domain}</span>
-        </div>
-      </div>
-    `;
+    card.setAttribute('data-img-url', img.img_url);
+    card.setAttribute('data-img-title', img.img_title || img.page_title || 'Untitled');
+    card.setAttribute('data-page-url', img.page_url);
+    card.setAttribute('data-page-favicon', img.page_favicon || '');
     
-    card.onclick = () => openImageModal(i);
+    var favicon = img.page_favicon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>';
+    
+    card.innerHTML = 
+      '<div class="image-wrapper">' +
+        '<img src="' + img.img_url + '" alt="' + (img.img_title || '') + '" loading="lazy">' +
+      '</div>' +
+      '<div class="image-info">' +
+        '<div class="image-title">' + (img.img_title || img.page_title || 'Untitled') + '</div>' +
+        '<div class="image-source">' +
+          '<img src="' + favicon + '" onerror="this.src=\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>\'">' +
+          '<span>' + domain + '</span>' +
+        '</div>' +
+      '</div>';
+    
+    card.onclick = function() {
+      var imgUrl = this.getAttribute('data-img-url');
+      var imgTitle = this.getAttribute('data-img-title');
+      var pageUrl = this.getAttribute('data-page-url');
+      var pageFavicon = this.getAttribute('data-page-favicon');
+      openImageModal({
+        img_url: imgUrl,
+        img_title: imgTitle,
+        page_url: pageUrl,
+        page_favicon: pageFavicon
+      });
+    };
+    
     grid.appendChild(card);
     
-    if (seenDomains.size >= 40) break;
+    var domainCount = 0;
+    for (var key in seenDomains) {
+      if (seenDomains.hasOwnProperty(key)) domainCount++;
+    }
+    if (domainCount >= 40) break;
   }
   
   results.appendChild(grid);
@@ -1037,132 +1231,163 @@ function searchImages() {
 
 // Search Videos
 function searchVideos() {
-  const results = document.getElementById("results");
-  const resultsInfo = document.getElementById("resultsInfo");
+  var results = document.getElementById("results");
+  var resultsInfo = document.getElementById("resultsInfo");
   results.innerHTML = "";
   
-  let scored = [];
-  for (const v of VIDEOS) {
-    const s = scoreVideo(v, currentQuery);
-    if (s > 0) scored.push({ v, s });
+  var scored = [];
+  for (var i = 0; i < VIDEOS.length; i++) {
+    var v = VIDEOS[i];
+    var s = scoreVideo(v, currentQuery);
+    if (s > 0) scored.push({ v: v, s: s });
   }
-  scored.sort((a, b) => b.s - a.s);
+  
+  scored.sort(function(a, b) { return b.s - a.s; });
   
   if (scored.length === 0) {
     showNoResults();
     return;
   }
   
-  resultsInfo.textContent = `About ${scored.length.toLocaleString()} video results`;
+  resultsInfo.textContent = "About " + formatNumber(scored.length) + " video results";
   
-  const seenDomains = new Set();
-  for (const r of scored) {
-    const v = r.v;
-    const domain = new URL(v.page_url).hostname.replace('www.', '');
+  var seenDomains = {};
+  for (var j = 0; j < scored.length; j++) {
+    var r = scored[j];
+    var v = r.v;
     
-    if (seenDomains.has(domain)) continue;
-    seenDomains.add(domain);
+    var parser = document.createElement('a');
+    parser.href = v.page_url;
+    var domain = parser.hostname.replace('www.', '');
     
-    const card = document.createElement("div");
+    if (seenDomains[domain]) continue;
+    seenDomains[domain] = true;
+    
+    var card = document.createElement("div");
     card.className = "video-card";
-    card.onclick = () => window.open(v.video_url, '_blank');
+    card.setAttribute('data-video-url', v.video_url);
+    card.onclick = function() {
+      window.open(this.getAttribute('data-video-url'), '_blank');
+    };
     
-    card.innerHTML = `
-      <div class="video-thumbnail-wrapper">
-        <img class="video-thumbnail" src="${v.thumbnail || ''}" alt="${v.video_title || ''}">
-        <span class="video-duration">12:34</span>
-      </div>
-      <div class="video-info">
-        <div class="video-title">${v.video_title || v.page_title || 'Untitled Video'}</div>
-        <div class="video-meta">
-          <img src="${v.page_favicon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>'}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>'">
-          <span class="video-meta-text">${domain}</span>
-        </div>
-        <div class="video-desc">${v.page_title || 'Watch this video'}</div>
-      </div>
-    `;
+    var favicon = v.page_favicon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>';
+    
+    card.innerHTML = 
+      '<div class="video-thumbnail-wrapper">' +
+        '<img class="video-thumbnail" src="' + (v.thumbnail || '') + '" alt="' + (v.video_title || '') + '">' +
+        '<span class="video-duration">12:34</span>' +
+      '</div>' +
+      '<div class="video-info">' +
+        '<div class="video-title">' + (v.video_title || v.page_title || 'Untitled Video') + '</div>' +
+        '<div class="video-meta">' +
+          '<img src="' + favicon + '" onerror="this.src=\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>\'">' +
+          '<span class="video-meta-text">' + domain + '</span>' +
+        '</div>' +
+        '<div class="video-desc">' + (v.page_title || 'Watch this video') + '</div>' +
+      '</div>';
     
     results.appendChild(card);
     
-    if (seenDomains.size >= 20) break;
+    var domainCount = 0;
+    for (var key in seenDomains) {
+      if (seenDomains.hasOwnProperty(key)) domainCount++;
+    }
+    if (domainCount >= 20) break;
   }
 }
 
 // Search Files
 function searchFiles() {
-  const results = document.getElementById("results");
-  const resultsInfo = document.getElementById("resultsInfo");
+  var results = document.getElementById("results");
+  var resultsInfo = document.getElementById("resultsInfo");
   results.innerHTML = "";
   
-  let scored = [];
-  for (const f of FILES) {
-    const s = scoreFile(f, currentQuery);
-    if (s > 0) scored.push({ f, s });
+  var scored = [];
+  for (var i = 0; i < FILES.length; i++) {
+    var f = FILES[i];
+    var s = scoreFile(f, currentQuery);
+    if (s > 0) scored.push({ f: f, s: s });
   }
-  scored.sort((a, b) => b.s - a.s);
+  
+  scored.sort(function(a, b) { return b.s - a.s; });
   
   if (scored.length === 0) {
     showNoResults();
     return;
   }
   
-  resultsInfo.textContent = `About ${scored.length.toLocaleString()} file results`;
+  resultsInfo.textContent = "About " + formatNumber(scored.length) + " file results";
   
-  const seenDomains = new Set();
-  for (const r of scored) {
-    const f = r.f;
-    const domain = new URL(f.page_url).hostname.replace('www.', '');
+  var seenDomains = {};
+  for (var j = 0; j < scored.length; j++) {
+    var r = scored[j];
+    var f = r.f;
     
-    if (seenDomains.has(domain)) continue;
-    seenDomains.add(domain);
+    var parser = document.createElement('a');
+    parser.href = f.page_url;
+    var domain = parser.hostname.replace('www.', '');
     
-    const ext = f.file_url.split('.').pop().toUpperCase().substring(0, 4);
+    if (seenDomains[domain]) continue;
+    seenDomains[domain] = true;
     
-    const card = document.createElement("div");
+    var urlParts = f.file_url.split('.');
+    var ext = urlParts[urlParts.length - 1].toUpperCase();
+    if (ext.length > 4) ext = ext.substring(0, 4);
+    
+    var card = document.createElement("div");
     card.className = "file-card";
-    card.innerHTML = `
-      <div class="file-icon">${ext}</div>
-      <div class="file-info">
-        <a href="${f.file_url}" target="_blank" class="file-title">${f.file_title || f.file_url}</a>
-        <div class="file-meta">
-          <span>${domain}</span>
-          <span>•</span>
-          <span>${ext} file</span>
-        </div>
-      </div>
-      <button class="download-btn" onclick="event.stopPropagation(); window.open('${f.file_url}', '_blank')">
-        Download
-      </button>
-    `;
+    
+    card.innerHTML = 
+      '<div class="file-icon">' + ext + '</div>' +
+      '<div class="file-info">' +
+        '<a href="' + f.file_url + '" target="_blank" class="file-title">' + (f.file_title || f.file_url) + '</a>' +
+        '<div class="file-meta">' +
+          '<span>' + domain + '</span>' +
+          '<span>•</span>' +
+          '<span>' + ext + ' file</span>' +
+        '</div>' +
+      '</div>' +
+      '<button class="download-btn" onclick="event.stopPropagation(); window.open(\'' + f.file_url + '\', \'_blank\')">' +
+        'Download' +
+      '</button>';
     
     results.appendChild(card);
     
-    if (seenDomains.size >= 20) break;
+    var domainCount = 0;
+    for (var key in seenDomains) {
+      if (seenDomains.hasOwnProperty(key)) domainCount++;
+    }
+    if (domainCount >= 20) break;
   }
 }
 
 // Image Modal
 function openImageModal(imageData) {
   currentImageData = imageData;
-  const modal = document.getElementById("imageModal");
-  const modalImg = document.getElementById("modalImage");
-  const modalTitle = document.getElementById("modalTitle");
-  const modalSource = document.getElementById("modalSource");
+  var modal = document.getElementById("imageModal");
+  var modalImg = document.getElementById("modalImage");
+  var modalTitle = document.getElementById("modalTitle");
+  var modalSource = document.getElementById("modalSource");
   
   modalImg.src = imageData.img_url;
   modalTitle.textContent = imageData.img_title || imageData.page_title || 'Untitled';
   
-  const domain = new URL(imageData.page_url).hostname.replace('www.', '');
-  modalSource.innerHTML = `
-    <img src="${imageData.page_favicon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>'}">
-    <span>${domain}</span>
-  `;
+  var parser = document.createElement('a');
+  parser.href = imageData.page_url;
+  var domain = parser.hostname.replace('www.', '');
   
-  modal.classList.add("active");
+  var favicon = imageData.page_favicon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>';
+  
+  modalSource.innerHTML = 
+    '<img src="' + favicon + '">' +
+    '<span>' + domain + '</span>';
+  
+  modal.className = "modal active";
 }
 
 function closeModal() {
-  document.getElementById("imageModal").classList.remove("active");
+  var modal = document.getElementById("imageModal");
+  modal.className = "modal";
 }
 
 function visitSource() {
@@ -1179,43 +1404,56 @@ function viewImage() {
 
 // No Results
 function showNoResults() {
-  const results = document.getElementById("results");
-  const resultsInfo = document.getElementById("resultsInfo");
+  var results = document.getElementById("results");
+  var resultsInfo = document.getElementById("resultsInfo");
   
   resultsInfo.textContent = "";
   
-  results.innerHTML = `
-    <div class="no-results">
-      <div class="no-results-title">No results found for "${currentQuery}"</div>
-      <div class="no-results-desc">Try different keywords or check your spelling</div>
-      <div class="suggestions">
-        <p style="font-weight: 500; margin-bottom: 8px;">Suggestions:</p>
-        <ul>
-          <li>Make sure all words are spelled correctly</li>
-          <li>Try different keywords</li>
-          <li>Try more general keywords</li>
-          <li>Try fewer keywords</li>
-        </ul>
-      </div>
-    </div>
-  `;
+  results.innerHTML = 
+    '<div class="no-results">' +
+      '<div class="no-results-title">No results found for "' + currentQuery + '"</div>' +
+      '<div class="no-results-desc">Try different keywords or check your spelling</div>' +
+      '<div class="suggestions">' +
+        '<p style="font-weight: 500; margin-bottom: 8px;">Suggestions:</p>' +
+        '<ul>' +
+          '<li>Make sure all words are spelled correctly</li>' +
+          '<li>Try different keywords</li>' +
+          '<li>Try more general keywords</li>' +
+          '<li>Try fewer keywords</li>' +
+        '</ul>' +
+      '</div>' +
+    '</div>';
 }
 
 // Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
-    e.preventDefault();
+function handleKeyDown(e) {
+  e = e || window.event;
+  var keyCode = e.keyCode || e.which;
+  var target = e.target || e.srcElement;
+  
+  // Press / to focus search
+  if (keyCode === 191 && target.tagName !== 'INPUT') { // / key
+    if (e.preventDefault) e.preventDefault();
+    else e.returnValue = false;
     document.getElementById('searchInput').focus();
   }
   
-  if (e.key === 'Escape') {
-    if (document.getElementById('imageModal').classList.contains('active')) {
+  // Press Escape to close modal
+  if (keyCode === 27) { // Escape key
+    var modal = document.getElementById('imageModal');
+    if (modal.className.indexOf('active') !== -1) {
       closeModal();
     }
   }
-});
-</script>
+}
 
+if (document.addEventListener) {
+  document.addEventListener('keydown', handleKeyDown, false);
+} else if (document.attachEvent) {
+  document.attachEvent('onkeydown', handleKeyDown);
+}
+</script>
 </body>
 </html>
+
 
